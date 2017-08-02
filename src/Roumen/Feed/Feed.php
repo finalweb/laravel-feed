@@ -32,7 +32,17 @@ class Feed
     /**
      * @var string
      */
+    public $subtitle = 'My feed subtitle';
+
+    /**
+     * @var string
+     */
     public $description = 'My feed description';
+
+    /**
+     * @var string
+     */
+    public $author = 'Roumen Damianoff';
 
     /**
      * @var string
@@ -249,6 +259,7 @@ class Feed
 
         $channel = [
             'title'         =>  htmlspecialchars(strip_tags($this->title), ENT_COMPAT, 'UTF-8'),
+            'author'        =>  $this->author,
             'description'   =>  $this->description,
             'logo'          =>  $this->logo,
             'icon'          =>  $this->icon,
@@ -261,7 +272,9 @@ class Feed
             'ref'           =>  $this->ref,
             'pubdate'       =>  $this->formatDate($this->pubdate, $format),
             'lang'          =>  $this->lang,
-            'copyright'     =>  $this->copyright
+            'copyright'     =>  $this->copyright,
+            'category'      =>  $this->category,
+            'subtitle'      =>  $this->subtitle
         ];
 
         $viewData = [
