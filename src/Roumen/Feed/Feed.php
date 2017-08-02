@@ -25,6 +25,11 @@ class Feed
     private $items = [];
 
     /**
+     * @var boolean
+     */
+    public $showItunesFields = false;
+
+    /**
      * @var string
      */
     public $title = 'My feed title';
@@ -43,6 +48,11 @@ class Feed
      * @var string
      */
     public $author = 'Roumen Damianoff';
+
+    /**
+     * @var string
+     */
+    public $category = null;
 
     /**
      * @var string
@@ -274,7 +284,8 @@ class Feed
             'lang'          =>  $this->lang,
             'copyright'     =>  $this->copyright,
             'category'      =>  $this->category,
-            'subtitle'      =>  $this->subtitle
+            'subtitle'      =>  $this->subtitle,
+            'showItunesFields' => $this->showItunesFields
         ];
 
         $viewData = [
