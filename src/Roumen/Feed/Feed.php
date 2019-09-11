@@ -57,6 +57,11 @@ class Feed
     /**
      * @var string
      */
+    public $subcategory = null;
+
+    /**
+     * @var string
+     */
     public $domain;
 
     /**
@@ -284,6 +289,7 @@ class Feed
             'lang'          =>  $this->lang,
             'copyright'     =>  $this->copyright,
             'category'      =>  $this->category,
+            'subcategory'   =>  $this->subcategory,
             'subtitle'      =>  $this->subtitle,
             'showItunesFields' => $this->showItunesFields
         ];
