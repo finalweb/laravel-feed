@@ -286,6 +286,7 @@ class Feed
             'color'         =>  $this->color,
             'cover'         =>  $this->cover,
             'ga'            =>  $this->ga,
+            'email'         =>  $this->email,
             'related'       =>  $this->related,
             'rssLink'       =>  $this->getRssLink(),
             'link'          =>  $this->link,
