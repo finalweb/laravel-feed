@@ -98,6 +98,11 @@ class Feed
      * @var string
      */
     public $ga;
+    
+    /**
+     * @var string
+     */
+    public $email;
 
     /**
      * @var boolean
