@@ -1,28 +1,63 @@
-<?php namespace Roumen\Feed;
+<?php namespace Laravelium\Feed;
 
 /**
  * Feed generator class for laravel-feed package.
  *
- * @author Roumen Damianoff <roumen@crimsson.com>
- * @version 2.10.5
- * @link https://roumen.it/projects/laravel-feed
+ * @author Rumen Damyanov <r@alfamatter.com>
+ * @version 7.0.1
+ * @link https://laravelium.com
  * @license http://opensource.org/licenses/mit-license.php MIT License
  */
 
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Request;
-use Illuminate\Support\Facades\Response;
-use Illuminate\Support\Facades\View;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Filesystem\Filesystem as Filesystem;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Contracts\Routing\ResponseFactory as ResponseFactory;
+use Illuminate\Contracts\View\Factory as ViewFactory;
 
 class Feed
 {
     const DEFAULT_REF = 'self';
 
     /**
+     * CacheRepository instance
+     *
+     * @var CacheRepository $cache
+     */
+    public $cache = null;
+
+    /**
+     * ConfigRepository instance
+     *
+     * @var ConfigRepository $configRepository
+     */
+    protected $configRepository = null;
+
+    /**
+    * Filesystem instance
+    *
+    * @var Filesystem $file
+    */
+    protected $file = null;
+
+    /**
+    * ResponseFactory instance
+    *
+    * @var ResponseFactory $response
+    */
+    protected $response = null;
+
+    /**
+    * ViewFactory instance
+    *
+    * @var ViewFactory $view
+    */
+    protected $view = null;
+
+    /**
      * @var array
      */
-    private $items = [];
+    public $items = [];
 
     /**
      * @var string
@@ -152,7 +187,7 @@ class Feed
     /**
      * @var array
      */
-    private $namespaces = [];
+    public $namespaces = [];
 
     /**
      * @var string
@@ -160,44 +195,24 @@ class Feed
     private $customView = null;
 
     /**
-     * Add new item to $items array
-     *
-     * @param string $title
-     * @param string $author
-     * @param string $link
-     * @param string $pubdate
-     * @param string $description
-     * @param string $content
-     * @param array $enclosure (optional)
-     * @param string $category (optional)
-     *
-     * @return void
+     * Item duration (optional)
+     * @var string
      */
-    public function add($title, $author, $link, $pubdate, $description, $content='', $enclosure = [], $category='')
-    {
-        // append ... to description
-        $append = '';
-        // shortening the description
-        if ($this->shortening)
-        {
-            if(strlen($description) > $this->shorteningLimit){
-                //adds ... for shortened description
-                $append = '...';
-            }
-            $description = mb_substr($description, 0, $this->shorteningLimit, 'UTF-8') . $append;
-        }
+    public $duration;
 
-        // add to items
-        $this->setItem([
-            'title' => $title,
-            'author' => $author,
-            'link' => $link,
-            'pubdate' => $pubdate,
-            'description' => $description,
-            'content' => $content,
-            'enclosure' => $enclosure,
-            'category' => $category
-        ]);
+    /**
+     * Using constructor we populate our model from configuration file
+     * and loading dependencies
+     *
+     * @param array $params
+     */
+    public function __construct($params)
+    {
+        $this->cache = $params['cache'];
+        $this->configRepository = $params['config'];
+        $this->file = $params['files'];
+        $this->response = $params['response'];
+        $this->view = $params['view'];
     }
 
     /**
@@ -210,22 +225,27 @@ class Feed
     public function addItem(array $item)
     {
         // if is multidimensional
-        if (array_key_exists(1, $item))
-        {
-            foreach ($item as $i)
-            {
+        if (array_key_exists(1, $item)) {
+            foreach ($item as $i) {
                 $this->addItem($i);
             }
-
             return;
         }
 
-        if ($this->shortening)
-        {
-            $item['description'] = mb_substr($item['description'], 0, $this->shorteningLimit, 'UTF-8');
+        if ($this->shortening) {
+            $append = (strlen($item['description']) > $this->shorteningLimit) ? '...' : '';
+            $item['description'] = mb_substr($item['description'], 0, $this->shorteningLimit, 'UTF-8') . $append;
         }
 
-        $this->setItem($item);
+        if (isset($item['title'])) {
+            $item['title'] = htmlspecialchars(strip_tags($item['title']), ENT_COMPAT, 'UTF-8');
+        }
+
+        if (isset($item['subtitle'])) {
+            $item['subtitle'] = htmlspecialchars(strip_tags($item['subtitle']), ENT_COMPAT, 'UTF-8');
+        }
+
+        $this->items[] = $item;
     }
 
     /**
@@ -239,103 +259,120 @@ class Feed
      */
     public function render($format = null, $cache = null, $key = null)
     {
+        if (null === $format) {
+            $format = "atom";
+        }
 
-        if ($format == null && $this->customView == null) $format = "atom";
-        if ($this->customView == null) $this->customView = $format;
-        if ($cache != null) $this->caching = $cache;
-        if ($key != null) $this->cacheKey = $key;
+        if (0 === $cache || (null === $cache && 0 === $this->caching)) {
+            $this->clearCache();
+        }
 
-        if ($this->ctype == null)
-        {
-            ($format == 'rss') ? $this->ctype = 'application/rss+xml' : $this->ctype = 'application/atom+xml';
+        if (0 < $cache) {
+            $this->caching = $cache;
+        }
+
+        if (null !== $key) {
+            $this->cacheKey = $key;
+        }
+
+        if (null !== $this->customView) {
+            $view = $this->customView;
+        } else {
+            $view = 'feed::'.$format;
+        }
+
+        if (null !== $this->ctype) {
+            $ctype = $this->ctype;
+        } else {
+            $ctype = ($format == 'atom') ? 'application/atom+xml' : 'application/rss+xml';
         }
 
         // if cache is on and there is cached feed => return it
-        if ($this->caching > 0 && Cache::has($this->cacheKey))
-        {
-            return Response::make(Cache::get($this->cacheKey), 200, array('Content-Type' => $this->ctype.'; charset='.$this->charset));
+        if (0 < $this->caching && $this->cache->has($this->cacheKey)) {
+            return $this->response->make($this->cache->get($this->cacheKey), 200, ['Content-Type' => $this->cache->get($this->cacheKey."_ctype").'; charset='.$this->charset]);
         }
 
-        if (empty($this->lang)) $this->lang = Config::get('application.language');
-        if (empty($this->link)) $this->link = Config::get('application.url');
-        if (empty($this->ref)) $this->ref = self::DEFAULT_REF;
-        if (empty($this->pubdate)) $this->pubdate = date('D, d M Y H:i:s O');
-
-        foreach($this->items as $k => $v)
-        {
-            $this->items[$k]['title'] = htmlspecialchars(strip_tags($this->items[$k]['title']), ENT_COMPAT, 'UTF-8');
-            $this->items[$k]['pubdate'] = $this->formatDate($this->items[$k]['pubdate'], $format);
+        if (empty($this->lang)) {
+            $this->lang = $this->configRepository->get('application.language');
         }
+        if (empty($this->link)) {
+            $this->link = $this->configRepository->get('application.url');
+        }
+        if (empty($this->ref)) {
+            $this->ref = self::DEFAULT_REF;
+        }
+        if (empty($this->pubdate)) {
+            $this->pubdate = date('D, d M Y H:i:s O');
+        }
+
+        $rssLink = (!empty($this->domain)) ? sprintf('%s/%s', rtrim($this->domain, '/'), ltrim(request()->path(), '/')) : request()->url();
 
         $channel = [
-            'title'         =>  htmlspecialchars(strip_tags($this->title), ENT_COMPAT, 'UTF-8'),
-            'author'        =>  $this->author,
-            'description'   =>  $this->description,
-            'logo'          =>  $this->logo,
-            'icon'          =>  $this->icon,
-            'color'         =>  $this->color,
-            'cover'         =>  $this->cover,
-            'ga'            =>  $this->ga,
-            'related'       =>  $this->related,
-            'rssLink'       =>  $this->getRssLink(),
-            'link'          =>  $this->link,
-            'ref'           =>  $this->ref,
-            'pubdate'       =>  $this->formatDate($this->pubdate, $format),
-            'lang'          =>  $this->lang,
-            'copyright'     =>  $this->copyright,
-            'category'      =>  $this->category,
-            'subcategory'   =>  $this->subcategory,
-            'subtitle'      =>  $this->subtitle,
-            'showItunesFields' => $this->showItunesFields
+      'title'     =>  htmlspecialchars(strip_tags($this->title), ENT_COMPAT, 'UTF-8'),
+      'subtitle'    =>  htmlspecialchars(strip_tags($this->subtitle), ENT_COMPAT, 'UTF-8'),
+      'author'        =>  $this->author,
+      'description'   =>  $this->description,
+      'logo'      =>  $this->logo,
+      'icon'      =>  $this->icon,
+      'color'     =>  $this->color,
+      'cover'     =>  $this->cover,
+      'ga'      =>  $this->ga,
+      'related'     =>  $this->related,
+      'rssLink'     =>  $rssLink,
+      'link'      =>  $this->link,
+      'ref'       =>  $this->ref,
+      'pubdate'     =>  $this->formatDate($this->pubdate, $format),
+      'lang'      =>  $this->lang,
+      'copyright'   =>  $this->copyright,
+      'category'      =>  $this->category,
+      'subcategory'   =>  $this->subcategory,
+      'showItunesFields' => $this->showItunesFields
         ];
 
         $viewData = [
-            'items'         => $this->items,
-            'channel'       => $channel,
-            'namespaces'    => $this->getNamespaces()
-        ];
+      'items'     => $this->items,
+      'channel'     => $channel,
+      'namespaces'  => $this->namespaces
+    ];
 
         // if cache is on put this feed in cache and return it
-        if ($this->caching > 0)
-        {
-            Cache::put($this->cacheKey, View::make($this->getView($this->customView), $viewData)->render(), $this->caching);
+        if (0 < $this->caching) {
 
-            return Response::make(Cache::get($this->cacheKey), 200, array('Content-Type' => $this->ctype.'; charset='.$this->charset));
-        }
-        else if ($this->caching == 0)
-        {
+      // cache the view
+            $this->cache->put($this->cacheKey, $this->view->make($view, $viewData)->render(), $this->caching);
+            // cache the ctype
+            $this->cache->put($this->cacheKey."_ctype", $ctype, $this->caching);
+
+            return $this->response->make($this->cache->get($this->cacheKey), 200, ['Content-Type' => $this->cache->get($this->cacheKey."_ctype").'; charset='.$this->charset]);
+        } else {
             // if cache is 0 delete the key (if exists) and return response
             $this->clearCache();
 
-            return Response::make(View::make($this->getView($this->customView), $viewData), 200, array('Content-Type' => $this->ctype.'; charset='.$this->charset));
+            return $this->response->make($this->view->make($view, $viewData), 200, ['Content-Type' => $ctype.'; charset='.$this->charset]);
         }
-        else if ($this->caching < 0)
-        {
-            // if cache is negative value delete the key (if exists) and return cachable object
-            $this->clearCache();
-
-            return View::make($this->getView($this->customView), $viewData)->render();
-        }
-
     }
 
     /**
-     * Create link
-     *
-     * @param string $url
-     * @param string $type
-     * @param string $title
-     * @param string $lang
-     *
-     * @return string
-     */
+       * Create link
+       *
+       * @param string $url
+       * @param string $type
+       * @param string $title
+       * @param string $lang
+       *
+       * @return string
+       */
     public static function link($url, $type='atom', $title=null, $lang=null)
     {
+        $type = (in_array($type, ['rss', 'atom'], true)) ? 'application/'.$type.'+xml' : $type;
 
-        if ($type == 'rss') $type = 'application/rss+xml';
-        if ($type == 'atom') $type = 'application/atom+xml';
-        if ($title != null) $title = ' title="'.$title.'"';
-        if ($lang != null) $lang = ' hreflang="'.$lang.'"';
+        if ($title != null) {
+            $title = ' title="'.$title.'"';
+        }
+
+        if ($lang != null) {
+            $lang = ' hreflang="'.$lang.'"';
+        }
 
         return '<link rel="alternate"'.$lang.' type="'.$type.'" href="'.$url.'"'.$title.'>';
     }
@@ -347,9 +384,7 @@ class Feed
      */
     public function isCached()
     {
-
-        if (Cache::has($this->cacheKey))
-        {
+        if ($this->cache->has($this->cacheKey)) {
             return true;
         }
 
@@ -363,7 +398,9 @@ class Feed
      */
     public function clearCache()
     {
-        if ($this->isCached()) Cache::forget($this->cacheKey);
+        if ($this->isCached()) {
+            $this->cache->forget($this->cacheKey);
+        }
     }
 
     /**
@@ -376,38 +413,31 @@ class Feed
         $this->cacheKey = $key;
         $this->caching = $duration;
 
-        if ($duration < 1) $this->clearCache();
-    }
-
-    /**
-     * Get view name
-     *
-     * @param string $format
-     *
-     * @return void
-     */
-    public function getView($format)
-    {
-        // if a custom view is set
-        if ($this->customView !== null && View::exists($this->customView))
-        {
-            return $this->customView;
+        if ($duration < 1) {
+            $this->clearCache();
         }
-
-        // else return default view
-        return 'feed::'.$format;
     }
 
     /**
-     * Set Custom view
-     *
-     * @param string $name
+     * Get Custom View
      *
      * @return void
      */
-    public function setView($name=null)
+    public function getCustomView()
     {
-        $this->customView = $name;
+        return $this->customView;
+    }
+
+    /**
+     * Set Custom View
+     *
+     * @param string $view
+     *
+     * @return void
+     */
+    public function setCustomView($view=null)
+    {
+        $this->customView = $view;
     }
 
     /**
@@ -422,6 +452,12 @@ class Feed
         $this->shorteningLimit = $l;
     }
 
+    // TODO : documentation
+    public function getTextLimit()
+    {
+        return $this->shorteningLimit;
+    }
+
     /**
      * Turn on/off text shortening for item content
      *
@@ -434,6 +470,12 @@ class Feed
         $this->shortening = $b;
     }
 
+    // TODO : documentation
+    public function getShortening()
+    {
+        return $this->shortening;
+    }
+
     /**
      * Format datetime string, timestamp integer or carbon object in valid feed format
      *
@@ -441,64 +483,18 @@ class Feed
      *
      * @return string
      */
-    private function formatDate($date, $format='atom')
+    public function formatDate($date, $format='atom')
     {
-        if ($format == "atom")
-        {
-            switch ($this->dateFormat)
-            {
-                case "carbon":
-                    $date = date('c', strtotime($date->toDateTimeString()));
-                    break;
-                case "timestamp":
-                    $date = date('c', strtotime('@'.$date));
-                    break;
-                case "datetime":
-                    $date = date('c', strtotime($date));
-                    break;
-            }
-        }
-        else
-        {
-            switch ($this->dateFormat)
-            {
-                case "carbon":
-                    $date = date('D, d M Y H:i:s O', strtotime($date->toDateTimeString()));
-                    break;
-                case "timestamp":
-                    $date = date('D, d M Y H:i:s O', strtotime('@'.$date));
-                    break;
-                case "datetime":
-                    $date = date('D, d M Y H:i:s O', strtotime($date));
-                    break;
-            }
+        if ('carbon' == $this->dateFormat) {
+            $date = ('atom' == $format) ? date('c', strtotime($date->toDateTimeString())) : date('D, d M Y H:i:s O', strtotime($date->toDateTimeString()));
+        } elseif ('timestamp' == $this->dateFormat) {
+            $date = ('atom' == $format) ? date('c', strtotime('@'.$date)) : date('D, d M Y H:i:s O', strtotime('@'.$date));
+        } else {
+            // datetime
+            $date = ('atom' == $format) ? date('c', strtotime($date)) : date('D, d M Y H:i:s O', strtotime($date));
         }
 
         return $date;
-    }
-
-    /**
-     * Add namespace
-     *
-     * @param string $n
-     *
-     * @return void
-     */
-    public function addNamespace($n)
-    {
-        $this->namespaces[] = $n;
-    }
-
-    /**
-     * Get all namespaces
-     *
-     * @param string $n
-     *
-     * @return void
-     */
-    public function getNamespaces()
-    {
-        return $this->namespaces;
     }
 
     /**
@@ -514,38 +510,34 @@ class Feed
     }
 
     /**
-     * Returns $items array
+     * Getter for dateFormat
      *
-     * @return array
+     * @param string $format
+     *
+     * @return void
      */
-    public function getItems()
+    public function getDateFormat()
     {
-        return $this->items;
+        return $this->dateFormat;
     }
 
     /**
-     * Adds item to $items array
+     * Returns $CacheKey value
      *
-     * @param array $item
+     * @return string
      */
-    public function setItem($item)
+    public function getCacheKey()
     {
-        $this->items[] = $item;
+        return $this->cacheKey;
     }
 
     /**
-     * Generate rss link
+     * Returns $caching value
      *
-     * @author Cara Wang <caraw@cnyes.com>
-     * @since  2016/09/09
+     * @return string
      */
-    private function getRssLink()
+    public function getCacheDuration()
     {
-        $rssLink = Request::url();
-        if (!empty($this->domain)) {
-            $rssLink = sprintf('%s/%s', rtrim($this->domain, '/'), ltrim(Request::path(), '/'));
-        }
-
-        return $rssLink;
+        return $this->caching;
     }
 }

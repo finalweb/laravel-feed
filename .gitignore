@@ -1,4 +1,3 @@
-/nbproject
 /vendor
 composer.phar
 composer.lock
@@ -6,4 +5,10 @@ composer.lock
 .DS_Store
 Thumbs.db
 *.sh
-.idea
+/tests/tmp
+.php_cs
+/.php_cs.cache
+/.phpunit.result.cache
+.idea/
+/build
+/html
