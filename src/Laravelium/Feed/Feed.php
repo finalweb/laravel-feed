@@ -245,6 +245,10 @@ class Feed
             $item['subtitle'] = htmlspecialchars(strip_tags($item['subtitle']), ENT_COMPAT, 'UTF-8');
         }
 
+        if (isset($item['pubdate'])) {
+          $item['pubdate'] = $this->formatDate($item['pubdate'], $this->dateFormat);
+        }
+
         $this->items[] = $item;
     }
 
