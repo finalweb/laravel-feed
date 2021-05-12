@@ -2,6 +2,14 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:webfeeds="http://webfeeds.org/rss/1.0" xmlns:media="http://search.yahoo.com/mrss/"<?php foreach($namespaces as $n) echo " ".$n; ?>>
     <channel>
         <title>{!! $channel['title'] !!}</title>
+        @if($channel['showItunesFields'])
+            <itunes:author>{!! $channel['author'] !!}</itunes:author>
+            @if (!empty($channel['subtitle']))
+                <itunes:subtitle>{{ $channel['subtitle'] }}</itunes:subtitle>
+            @endif
+            <itunes:category text="{{ $channel['category'] }}"></itunes:category>
+            <itunes:explicit>no</itunes:explicit>
+        @endif
         <link>{{ $channel['rssLink'] }}</link>
         <description><![CDATA[{!! $channel['description'] !!}]]></description>
         <atom:link href="{{ $channel['link'] }}" rel="{{ $channel['ref'] }}" type="application/rss+xml" />
@@ -13,6 +21,9 @@
         @endif
         @if (!empty($channel['cover']))
         <webfeeds:cover image="{{ $channel['cover'] }}" />
+        @endif
+        @if($channel['showItunesFields'])
+            <itunes:image href="{{ $channel['cover'] }}"></itunes:image>
         @endif
         @if (!empty($channel['icon']))
         <webfeeds:icon>{{ $channel['icon'] }}</webfeeds:icon>
@@ -36,8 +47,17 @@
         @foreach($items as $item)
         <item>
             <title><![CDATA[{!! $item['title'] !!}]]></title>
+            @if($channel['showItunesFields'])
+            @if (!empty($item['author']))
+                <itunes:author>{{ $item['author'] }}</itunes:author>
+            @endif
+            @if (!empty($item['duration']))
+                <itunes:duration>{{ $item['duration'] }}</itunes:duration>
+            @endif
             @if (!empty($item['category']))
+            <itunes:category>{{ $item['category'] }}</itunes:category>
             <category>{{ $item['category'] }}</category>
+            @endif
             @endif
             <link>{{ $item['link'] }}</link>
             <guid isPermaLink="true">{{ $item['link'] }}</guid>
