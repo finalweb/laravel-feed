@@ -130,6 +130,11 @@ class Feed
     public $ga;
 
     /**
+     * @var string
+     */
+    public $email;
+
+    /**
      * @var boolean
      */
     public $related = false;
@@ -321,6 +326,7 @@ class Feed
       'color'     =>  $this->color,
       'cover'     =>  $this->cover,
       'ga'      =>  $this->ga,
+      'email'      =>  $this->email,
       'related'     =>  $this->related,
       'rssLink'     =>  $rssLink,
       'link'      =>  $this->link,
