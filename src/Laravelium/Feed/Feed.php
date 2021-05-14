@@ -190,6 +190,11 @@ class Feed
     private $dateFormat = 'datetime';
 
     /**
+     * @var boolean
+     */
+    public $showItunesFields = false;
+
+    /**
      * @var array
      */
     public $namespaces = [];
