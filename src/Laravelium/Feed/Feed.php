@@ -324,7 +324,7 @@ class Feed
             $this->pubdate = date('D, d M Y H:i:s O');
         }
 
-        $rssLink = (!empty($this->rssLink) ? $this->rssLink : (!empty($this->domain)) ? sprintf('%s/%s', rtrim($this->domain, '/'), ltrim(request()->path(), '/')) : request()->url());
+        $rssLink = (!empty($this->rssLink) ? $this->rssLink : (!empty($this->domain) ? sprintf('%s/%s', rtrim($this->domain, '/'), ltrim(request()->path(), '/')) : request()->url()));
 
         $channel = [
       'title'     =>  htmlspecialchars(strip_tags($this->title), ENT_COMPAT, 'UTF-8'),
