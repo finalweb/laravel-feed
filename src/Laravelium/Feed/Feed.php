@@ -200,6 +200,16 @@ class Feed
     public $showItunesFields = false;
 
     /**
+      * @var boolean
+      */
+    public $appleBlocked = false;
+
+    /**
+      * @var boolean
+      */
+    public $googleBlocked = false;
+
+    /**
      * @var array
      */
     public $namespaces = [];
@@ -346,7 +356,9 @@ class Feed
       'copyright'   =>  $this->copyright,
       'category'      =>  $this->category,
       'subcategory'   =>  $this->subcategory,
-      'showItunesFields' => $this->showItunesFields
+      'showItunesFields' => $this->showItunesFields,
+      'appleBlocked' => $this->appleBlocked,
+      'googleBlocked' => $this->googleBlocked
         ];
 
         $viewData = [
